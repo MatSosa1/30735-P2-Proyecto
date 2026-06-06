@@ -1,6 +1,6 @@
 import os
 
-filename = ''
+filename = 'src'
 upload_dir = ''
 
 path = os.path.basename(filename)
