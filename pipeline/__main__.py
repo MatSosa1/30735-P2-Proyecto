@@ -8,9 +8,10 @@ from pipeline.check_diff_files import get_modif_added_files
 model_path = 'vuln_model/vulnerability_detector.pkl'
 model = Model(model_path)
 
-commit_hash = 'HEAD'  # Always the last commit
+base_hash = os.environ['BASE_SHA']
+commit_hash = os.environ['HEAD_SHA']
 
-for _, file_path in get_modif_added_files(commit_hash):
+for _, file_path in get_modif_added_files(base_hash, commit_hash):
   print(f'Path: {file_path}')
 
   if not os.path.exists(file_path):
