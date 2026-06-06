@@ -1,7 +1,3 @@
-import os
-
-filename = 'test'
-upload_dir = ''
-
-path = os.path.basename(filename)
-open(os.path.join(upload_dir, path), 'rb')
+cursor.execute(
+  "SELECT * FROM users WHERE username='" + username + "'"
+)
