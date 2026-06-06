@@ -1,7 +1,4 @@
-def sum(a, b) -> int:
-  return a + b
+cursor = NotImplemented
+user = 'hola'
 
-x = 10
-y = 20
-
-print(sum(x, y))
+cursor.execute('SELECT * FROM Users WHERE user = ?', [user])
