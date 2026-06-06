@@ -1,18 +1,27 @@
 import subprocess
 
-def get_modif_added_files(commit_hash):
+def get_modif_added_files(base_sha, head_sha):
   dev_code_path = 'src/'
 
-  filtered_files = []
-
   output = subprocess.run(
-    ["git", "diff-tree", "--no-commit-id", "--name-status", "-r", commit_hash],
+    [
+      'git',
+      'diff',
+      '--name-status',
+      base_sha,
+      head_sha
+    ],
     capture_output=True,
     text=True,
     check=True
   )
 
-  files = [line.split('\t')[:2] for line in output.stdout.strip().split('\n') if line]
+  files = [
+    line.split('\t')[:2]
+    for line in output.stdout.splitlines()
+  ]
+
+  filtered_files = []
 
   for file in files:
     print(file)
