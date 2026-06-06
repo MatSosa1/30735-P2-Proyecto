@@ -24,8 +24,6 @@ def get_modif_added_files(base_sha, head_sha):
   filtered_files = []
 
   for file in files:
-    print(file)
-
     # No deleted files
     if file[0] != 'D' and file[1].startswith(dev_code_path):
       filtered_files.append(file)
