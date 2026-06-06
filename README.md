@@ -4,6 +4,17 @@
 
 Desarrollo e Implementación de un Pipeline CI/CD Seguro con integración de IA para la Detección Automática de Vulnerabilidades en código fuente mediante un Modelo de Minería de Datos.
 
+## Links Importantes
+
+### Datasets
+
+1. [Kaggle Dataset](https://www.kaggle.com/datasets/jiscecseaiml/vulnerability-fix-dataset/data)
+2. [HuggingFace Dataset](https://huggingface.co/datasets/nuojohnchen/devign-processed/viewer/default/train)
+
+### GitHub Pipeline
+
+[GitHub Actions](https://docs.github.com/en/actions/get-started/understand-github-actions)
+
 ## Objetivo
 
 Diseñar, implementar y demostrar un pipeline CI/CD completamente automatizado y seguro que integre un modelo de inteligencia artificial basado en técnicas de minería de datos capaz de clasificar código fuente como **seguro** o **vulnerable**, permitiendo que únicamente el código considerado seguro llegue a producción.
