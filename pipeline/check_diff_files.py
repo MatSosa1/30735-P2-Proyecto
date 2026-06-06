@@ -12,7 +12,7 @@ def get_modif_added_files(commit_hash):
     check=True
   )
 
-  files = [line.split('\t')[:2] for line in output.stdout.strip().split('\n')]
+  files = [line.split('\t')[:2] for line in output.stdout.strip().split('\n') if line]
 
   for file in files:
     print(file)
