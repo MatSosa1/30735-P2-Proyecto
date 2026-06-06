@@ -1,4 +1,3 @@
-cursor = NotImplemented
-user = 'hola'
-
-cursor.execute('SELECT * FROM Users WHERE user = ?', [user])
+cursor.execute(
+  "SELECT * FROM users WHERE username='" + username + "'"
+)
