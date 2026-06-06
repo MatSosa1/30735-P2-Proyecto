@@ -1,4 +1,7 @@
-cursor = NotImplemented
-user = 'hola'
+import os
 
-cursor.execute('SELECT * FROM Users WHERE user = ?', [user])
+filename = ''
+upload_dir = ''
+
+path = os.path.basename(filename)
+open(os.path.join(upload_dir, path), 'rb')
