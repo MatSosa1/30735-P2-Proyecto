@@ -24,9 +24,76 @@ jobs:
         run: |
           pip install -r requirements.txt
 
+      - name: Notificar inicio de revisión
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *Inicio de revisión de seguridad*
+
+            *Desarrollador:* ${{ github.actor }}
+            *Repo:* ${{ github.repository }}
+            *PR:* #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}
+
+            Analizando el código modificado con el modelo ML...
+            [Ver PR](${{ github.event.pull_request.html_url }})
+
       - name: Revisar Vulnerabilidades Modelo IA
+        id: classify
+        continue-on-error: true
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python -m pipeline
+
+      - name: Notificar resultado SEGURO
+        if: steps.classify.outputs.result == 'SEGURO'
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *Código SEGURO — Revisión aprobada*
+
+            *Desarrollador:* ${{ github.actor }}
+            *Repo:* ${{ github.repository }}
+            *PR:* #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}
+
+            *Resultado:* SEGURO
+            *Probabilidad de vulnerabilidad:* ${{ steps.classify.outputs.probability }}
+
+            El pipeline continúa.
+            [Ver PR](${{ github.event.pull_request.html_url }})
+
+      - name: Notificar resultado VULNERABLE
+        if: steps.classify.outputs.result == 'VULNERABLE'
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_TO }}
+          token: ${{ secrets.TELEGRAM_TOKEN }}
+          format: markdown
+          message: |
+            *VULNERABILIDAD DETECTADA — PR Rechazado*
+
+            *Desarrollador:* ${{ github.actor }}
+            *Repo:* ${{ github.repository }}
+            *PR:* #${{ github.event.pull_request.number }} — ${{ github.event.pull_request.title }}
+
+            *Resultado:* VULNERABLE
+            *Probabilidad:* ${{ steps.classify.outputs.probability }}
+            *Tipo probable:* ${{ steps.classify.outputs.vuln_type }}
+            *Archivo afectado:* `${{ steps.classify.outputs.file }}`
+
+            El merge ha sido bloqueado automáticamente.
+            Corrige el código y abre un nuevo PR.
+            [Ver logs del run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Bloquear merge si es vulnerable
+        if: steps.classify.outputs.result == 'VULNERABLE' || steps.classify.outcome == 'failure'
+        run: |
+          echo "Revisión de seguridad fallida: merge bloqueado."
+          exit 1
