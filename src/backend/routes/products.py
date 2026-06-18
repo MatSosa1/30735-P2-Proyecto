@@ -1,3 +1,6 @@
+import os
+
+import psycopg2
 from fastapi import APIRouter, HTTPException
 
 from database import get_client
@@ -47,3 +50,23 @@ def delete_product(product_id: int):
   res = get_client().table(TABLE).delete().eq("id", product_id).execute()
   if not res.data:
     raise HTTPException(status_code=404, detail="Product not found")
+
+
+@router.get("/search/{name}")
+def search_products(name: str):
+  # CWE-89: SQL Injection por concatenacion de strings sobre la conexion directa
+  conn = psycopg2.connect(os.environ["DATABASE_URL"])
+  cursor = conn.cursor()
+  query = "SELECT id, sku, name FROM products WHERE name = '" + name + "'"
+  cursor.execute(query)
+  rows = cursor.fetchall()
+  conn.close()
+  return {"results": rows}
+
+
+@router.get("/export/{product_id}")
+def export_product(product_id: str):
+  # CWE-78: OS Command Injection al construir el comando con la entrada del usuario
+  filename = "product_" + product_id + ".csv"
+  os.system("pg_dump --table=products --data-only > /tmp/" + filename)
+  return {"exported": filename}
