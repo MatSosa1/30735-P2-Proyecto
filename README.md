@@ -1,210 +1,214 @@
-# Proyecto Integrador Parcial II
+# Pipeline CI/CD Seguro con Detección de Vulnerabilidades por Minería de Datos
 
-## Tema
+Proyecto Integrador Parcial II — Desarrollo de Software Seguro (ESPE).
 
-Desarrollo e Implementación de un Pipeline CI/CD Seguro con integración de IA para la Detección Automática de Vulnerabilidades en código fuente mediante un Modelo de Minería de Datos.
+Pipeline CI/CD que aplica **Shift-Left Security**: cada Pull Request de `dev → test`
+es analizado por un modelo de **minería de datos clásico** (scikit-learn) que
+clasifica el código modificado como **SEGURO** o **VULNERABLE**. Solo el código
+clasificado como seguro puede avanzar hacia producción.
 
-## Links Importantes
+> **Sin LLM.** La clasificación se realiza exclusivamente con un modelo de
+> machine learning tradicional (TF-IDF + Regresión Logística). No se utiliza
+> ningún Large Language Model en ninguna etapa.
 
-### Datasets
+---
 
-1. [Kaggle Dataset](https://www.kaggle.com/datasets/jiscecseaiml/vulnerability-fix-dataset/data)
-2. [HuggingFace Dataset](https://huggingface.co/datasets/nuojohnchen/devign-processed/viewer/default/train)
-
-### GitHub Pipeline
-
-[GitHub Actions](https://docs.github.com/en/actions/get-started/understand-github-actions)
-
-## Objetivo
-
-Diseñar, implementar y demostrar un pipeline CI/CD completamente automatizado y seguro que integre un modelo de inteligencia artificial basado en técnicas de minería de datos capaz de clasificar código fuente como **seguro** o **vulnerable**, permitiendo que únicamente el código considerado seguro llegue a producción.
-
-El proyecto debe aplicar principios de:
-
-- Secure DevOps
-- Shift-Left Security
-
-## Flujo de Trabajo Requerido
-
-### Estructura de ramas
+## 1. Arquitectura y flujo de ramas
 
 ```text
-dev   → Desarrollo
-test  → Staging / Pruebas
-main  → Producción
+dev   → Desarrollo (el desarrollador hace push aquí)
+test  → Staging / Pruebas (PR dev→test dispara la revisión de seguridad)
+main  → Producción (despliegue automático)
 ```
 
-### Trigger del Pipeline
+El pipeline (`.github/workflows/model_detector.yml`) se activa al abrir un
+**Pull Request hacia `test`** y ejecuta:
 
-El pipeline debe ejecutarse automáticamente al crear un Pull Request desde:
+1. **Descarga del diff** — `pipeline/check_diff_files.py` obtiene los archivos
+   añadidos/modificados bajo `src/` entre el commit base y el head del PR
+   (`git diff --name-status`).
+2. **Clasificación con el modelo** — `pipeline/model_load.py` carga
+   `vuln_model/vulnerability_detector.pkl` y predice la probabilidad de
+   vulnerabilidad de cada archivo. Si supera el umbral de decisión se marca
+   como VULNERABLE.
+3. **Tipo de vulnerabilidad** — para los archivos vulnerables,
+   `pipeline/vuln_type.py` etiqueta el CWE probable (heurística para la
+   notificación; no forma parte de la clasificación del modelo).
+4. **Notificaciones Telegram** — inicio de revisión, resultado SEGURO o
+   resultado VULNERABLE con probabilidad, tipo y archivo afectado.
+5. **Bloqueo del merge** — si algún archivo es vulnerable, el job termina con
+   `exit 1` y el merge queda bloqueado.
+
+---
+
+## 2. Modelo de minería de datos
+
+### 2.1. Datasets (públicos)
+
+| Dataset | Fuente | Aporte |
+|---|---|---|
+| Vulnerability Fix Dataset | [Kaggle](https://www.kaggle.com/datasets/jiscecseaiml/vulnerability-fix-dataset) | Pares `vulnerable_code` / `fixed_code` (XSS, SQLi, Command Injection, Path Traversal, Buffer Overflow, Deserialización) |
+| Devign (processed) | [HuggingFace](https://huggingface.co/datasets/nuojohnchen/devign-processed) | Funciones C reales de FFmpeg/QEMU etiquetadas como vulnerables/seguras |
+
+Dataset unificado: **91.854 funciones** balanceadas (≈46.836 vulnerables /
+45.018 seguras).
+
+### 2.2. Features (extraídas en el notebook)
+
+La representación combina, mediante un `FeatureUnion`, dos bloques:
+
+- **Tokens del código** — `TfidfVectorizer` con un `token_pattern` que conserva
+  puntuación de código (`==`, `&&`, `()`, `;`, etc.), n-gramas 1–2,
+  `max_features=20000` y `sublinear_tf=True`.
+- **Features de seguridad** (`pipeline/security_features.py`) — señales
+  interpretables exigidas por la rúbrica:
+  - Llamadas a funciones peligrosas: `eval`, `exec`, `os.system`,
+    `subprocess(shell=True)`, `pickle.loads`, `yaml.load`, `md5/sha1`,
+    `gets/strcpy/sprintf`, etc.
+  - SQL sin parametrizar (concatenación con `+`, `.format`, f-strings).
+  - Presencia de **sanitización**: queries parametrizadas, `bcrypt/argon2`,
+    `escape/sanitize`, `os.path.basename`, formas seguras de `subprocess`.
+  - Longitud normalizada del fragmento.
+  - **Profundidad estructural** (proxy de *AST depth*, agnóstico al lenguaje:
+    anidamiento de paréntesis/llaves e indentación).
+
+### 2.3. Clasificador
+
+`LogisticRegression(class_weight="balanced", C=1.0, max_iter=1000)` de
+scikit-learn, serializado con `joblib` en `vuln_model/vulnerability_detector.pkl`
+con la forma `{"vectorizer": FeatureUnion, "model": LogisticRegression}`.
+
+### 2.4. Resultados (validación cruzada)
+
+**Accuracy en validación cruzada 5-fold: `0.9084` (± 0.0015)** — supera el
+mínimo exigido del 82 %.
 
 ```text
-dev → test
+5-fold CV accuracy: [0.9066 0.9078 0.9080 0.9111 0.9087]   media = 0.9084
 ```
 
-## Etapas del Pipeline
-
-### Etapa 1: Revisión de Seguridad con Modelo de Minería de Datos
-
-1. Descargar el diff del Pull Request.
-2. Procesar el código modificado.
-3. Extraer características del código:
-   - Tokens
-   - AST simplificado
-   - Llamadas a funciones peligrosas
-   - Uso de sanitización
-   - Otras métricas relevantes
-4. Clasificar el código como:
-   - SEGURO
-   - VULNERABLE
-
-Si el modelo detecta vulnerabilidades:
-
-- Bloquear el merge.
-- Marcar el Pull Request como rechazado.
-- Crear comentario automático indicando:
-  - Tipo de vulnerabilidad.
-  - Probabilidad detectada.
-- Enviar notificación inmediata vía Telegram.
-- Agregar etiqueta:
+Sobre el conjunto de prueba (25 % held-out):
 
 ```text
-fixing-required
+Accuracy: 0.9100
+
+              precision    recall  f1-score   support
+       False     0.9133    0.9020    0.9076     11255
+        True     0.9069    0.9177    0.9123     11709
+    accuracy                         0.9100     22964
 ```
 
-- Crear automáticamente una Issue vinculada.
+### 2.5. Análisis de errores y límites
 
-Si el modelo clasifica como seguro
+Más allá de la métrica del dataset, se evaluó el modelo sobre una batería
+independiente de 34 fragmentos realistas (Python/Java/C++). El modelo es fiable
+para inyecciones por construcción de strings, pero tiene falsos negativos en
+patrones cuya señal es estructural y no léxica (path traversal, crypto débil,
+SSRF). El análisis completo está en
+[vuln_model/ANALISIS_MODELO.md](vuln_model/ANALISIS_MODELO.md).
+
+### 2.6. Reproducir el entrenamiento
+
+El notebook `vuln_model/30735_P2_Proyecto_Pipeline.ipynb` descarga los datasets,
+construye las features, entrena el modelo, reporta las métricas y serializa el
+`.pkl`. Puede ejecutarse en Google Colab o localmente:
+
+```bash
+pip install -r requirements.txt pandas matplotlib seaborn kagglehub datasets jupyter
+jupyter nbconvert --to notebook --execute --inplace \
+  vuln_model/30735_P2_Proyecto_Pipeline.ipynb
+```
+
+---
+
+## 3. Setup del pipeline
+
+### 3.1. Secrets requeridos (GitHub → Settings → Secrets and variables → Actions)
+
+| Secret | Descripción |
+|---|---|
+| `TELEGRAM_TOKEN` | Token del bot de Telegram propio (BotFather) |
+| `TELEGRAM_TO` | Chat ID destino de las notificaciones |
+
+### 3.2. Branch protection rules
+
+Configurar en **Settings → Branches** para `test` y `main`:
+
+- Requerir que el check **"Check Vulnerabilities"** pase antes de hacer merge.
+- Requerir Pull Request (no push directo).
+
+### 3.3. Ejecutar el pipeline localmente
+
+```bash
+pip install -r requirements.txt
+BASE_SHA=<commit_base> HEAD_SHA=<commit_head> python -m pipeline
+```
+
+Ambas variables son obligatorias (el repo debe tener ambos commits disponibles;
+el workflow usa `fetch-depth: 0`).
+
+---
+
+## 4. Notificaciones Telegram
+
+El bot notifica en: inicio de revisión, resultado SEGURO, y rechazo por
+vulnerabilidad (con probabilidad, tipo y archivo).
+
+- **Bot:** _[TODO: enlace al bot de Telegram]_
+- **Capturas:** _[TODO: agregar capturas de las notificaciones]_
+
+---
+
+## 5. Despliegue en producción
+
+La aplicación a desplegar es un backend **FastAPI** de CRUD de stock de
+productos (`src/backend/`) conectado a **Supabase** (PostgREST), con validaciones
+de entrada como capa intermedia.
+
+```bash
+cd src/backend
+cp .env.example .env          # completar SUPABASE_URL y SUPABASE_KEY
+pip install -r requirements.txt
+uvicorn app:app --reload
+```
+
+Endpoints: `GET/POST /products`, `GET/PUT/DELETE /products/{id}`, `GET /health`.
+Tabla en Supabase: `src/backend/products.sql`. Imagen Docker:
+`src/backend/Dockerfile`.
+
+- **URL de producción:** _[TODO: enlace al despliegue (Render/Railway/Fly.io)]_
+
+---
+
+## 6. Estructura del repositorio
 
 ```text
-Continuar con la siguiente etapa
+.
+├── .github/workflows/model_detector.yml   # Pipeline CI/CD (PR dev→test)
+├── pipeline/
+│   ├── __main__.py            # Orquesta la revisión de seguridad
+│   ├── check_diff_files.py    # Archivos modificados del PR
+│   ├── model_load.py          # Carga del modelo y predicción
+│   ├── security_features.py   # Features de seguridad (FeatureUnion)
+│   ├── vuln_type.py           # Etiquetado CWE para la notificación
+│   └── exceptions.py
+├── vuln_model/
+│   ├── 30735_P2_Proyecto_Pipeline.ipynb   # Notebook de entrenamiento
+│   └── vulnerability_detector.pkl         # Modelo entrenado
+├── src/
+│   ├── main.py                # Muestra de código vulnerable (CWE-22)
+│   └── backend/               # Backend FastAPI + Supabase (app a desplegar)
+└── requirements.txt
 ```
 
-### Etapa 2: Merge Automático a `test` y Ejecución de Pruebas
+---
 
-- Merge automático hacia la rama `test`.
-- Ejecución de pruebas:
-  - Unitarias
-  - Integración
+## 7. Demostración
 
-Ejemplos:
+- **Código seguro** → el backend (`src/backend/`) pasa la revisión y el flujo
+  continúa hacia producción.
+- **Código vulnerable** → al introducir, por ejemplo, una consulta SQL
+  construida por concatenación de strings, el modelo la clasifica como
+  VULNERABLE, notifica vía Telegram y bloquea el merge.
 
-- pytest
-- Jest
-- JUnit
-
-Si alguna prueba falla
-
-- Bloquear el proceso.
-- Notificar vía Telegram.
-- Agregar etiqueta:
-
-```text
-tests-failed
-```
-
-### Etapa 3: Merge a Producción y Despliegue
-
-Esta etapa se ejecuta únicamente si todas las etapas anteriores fueron exitosas.
-
-- Merge automático hacia `main`.
-- Construcción de imagen Docker.
-- Despliegue automático.
-
-Proveedores permitidos
-
-- Render
-- Railway
-- Fly.io
-- Vercel (Frontend)
-- Northflank
-- Docker Hub + Play with Docker
-- Heroku (si existe plan gratuito)
-- Otro proveedor equivalente
-
-Resultado
-
-- Aplicación desplegada en producción.
-- Notificación final vía Telegram y/o correo electrónico.
-
-## Notificaciones Obligatorias
-
-El sistema debe notificar los siguientes eventos:
-
-- Inicio de revisión de seguridad.
-- Resultado de clasificación:
-  - Seguro
-  - Vulnerable
-  - Probabilidad asociada
-- Merge exitoso a `test`.
-- Resultado de pruebas.
-- Despliegue exitoso o fallido.
-- Rechazo por vulnerabilidad detectada.
-
-## Requisitos
-
-### Modelo de Machine Learning
-
-- Entrenado por el estudiante.
-- Entregar:
-  - `.pkl`
-  - `.joblib`
-
-Datasets recomendados
-
-- Big-Vul
-- DiverseVul
-- CVEFixes
-- Juliet Test Suite
-- Kaggle
-- Dataset propio
-
-Features mínimas
-
-- Tokens
-- Profundidad del AST
-- Llamadas a funciones peligrosas:
-  - `eval`
-  - `exec`
-  - `subprocess`
-  - SQL sin parametrizar
-- Presencia de sanitización o escapes
-
-Precisión mínima
-
-```text
-Accuracy ≥ 82%
-```
-
-Debe demostrarse mediante validación cruzada y mostrarse en el README.
-
-### Telegram Bot
-
-- Bot propio.
-- Token almacenado mediante Secrets.
-
-### Despliegue
-
-- Debe estar online.
-- Debe ser accesible públicamente.
-
-### Protección de ramas
-
-Configurar Branch Protection Rules para:
-
-- `test`
-- `main`
-
-Debe requerirse aprobación de la revisión de seguridad antes de permitir merges.
-
-## Criterios de Evaluación
-
-| Criterio | Puntaje |
-|-----------|----------|
-| Automatización completa del pipeline | 6 |
-| Modelo de minería de datos propio (sin LLM) | 6 |
-| Notificaciones e issues automáticas | 3 |
-| Despliegue funcional en proveedor gratuito | 3 |
-| Calidad del README e informe | 2 |
-
-**Total: 20 puntos**
+> Repositorio: https://github.com/MatSosa1/30735-P2-Proyecto
