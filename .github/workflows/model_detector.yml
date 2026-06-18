@@ -9,6 +9,11 @@ jobs:
   run-python:
     runs-on: ubuntu-latest
 
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+
     steps:
       - name: Clonar repositorio
         uses: actions/checkout@v4
@@ -91,6 +96,73 @@ jobs:
             El merge ha sido bloqueado automáticamente.
             Corrige el código y abre un nuevo PR.
             [Ver logs del run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+      - name: Reportar vulnerabilidad (comentario, label e issue)
+        if: steps.classify.outputs.result == 'VULNERABLE'
+        uses: actions/github-script@v7
+        env:
+          PROB: ${{ steps.classify.outputs.probability }}
+          VTYPE: ${{ steps.classify.outputs.vuln_type }}
+          VFILE: ${{ steps.classify.outputs.file }}
+        with:
+          script: |
+            const prob = process.env.PROB;
+            const vtype = process.env.VTYPE;
+            const vfile = process.env.VFILE;
+            const actor = context.actor;
+            const prNumber = context.payload.pull_request.number;
+            const { owner, repo } = context.repo;
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+
+            try {
+              await github.rest.issues.createLabel({
+                owner, repo, name: 'fixing-required', color: 'B60205',
+                description: 'PR bloqueado: vulnerabilidad detectada por el modelo',
+              });
+            } catch (e) { /* la etiqueta ya existe */ }
+
+            const comment = [
+              '## Revisión de seguridad: VULNERABLE',
+              '',
+              'El modelo de minería de datos clasificó el código modificado como **VULNERABLE**. El merge ha sido bloqueado automáticamente.',
+              '',
+              '| Campo | Valor |',
+              '|---|---|',
+              '| **Resultado** | VULNERABLE |',
+              `| **Probabilidad** | ${prob} |`,
+              `| **Tipo probable** | ${vtype} |`,
+              '| **Archivo afectado** | `' + vfile + '` |',
+              `| **Desarrollador** | @${actor} |`,
+              '',
+              'Corrige la vulnerabilidad y vuelve a enviar los cambios.',
+              `[Ver logs del análisis](${runUrl})`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              owner, repo, issue_number: prNumber, body: comment,
+            });
+
+            await github.rest.issues.addLabels({
+              owner, repo, issue_number: prNumber, labels: ['fixing-required'],
+            });
+
+            await github.rest.issues.create({
+              owner, repo,
+              title: `[fixing-required] Vulnerabilidad en PR #${prNumber}: ${vtype}`,
+              labels: ['fixing-required'],
+              body: [
+                `Issue generada automáticamente por la revisión de seguridad del PR #${prNumber}.`,
+                '',
+                `- **Tipo:** ${vtype}`,
+                `- **Probabilidad:** ${prob}`,
+                '- **Archivo:** `' + vfile + '`',
+                `- **Desarrollador:** @${actor}`,
+                '',
+                `Relacionado con #${prNumber}`,
+                '',
+                `[Ver logs del análisis](${runUrl})`,
+              ].join('\n'),
+            });
 
       - name: Bloquear merge si es vulnerable
         if: steps.classify.outputs.result == 'VULNERABLE' || steps.classify.outcome == 'failure'
