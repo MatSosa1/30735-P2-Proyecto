@@ -52,6 +52,7 @@ def delete_product(product_id: int):
     raise HTTPException(status_code=404, detail="Product not found")
 
 
+
 @router.get("/search/{name}")
 def search_products(name: str):
   # CWE-89: SQL Injection por concatenacion de strings sobre la conexion directa
