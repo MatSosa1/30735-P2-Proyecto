@@ -104,8 +104,7 @@ Más allá de la métrica del dataset, se evaluó el modelo sobre una batería
 independiente de 34 fragmentos realistas (Python/Java/C++). El modelo es fiable
 para inyecciones por construcción de strings, pero tiene falsos negativos en
 patrones cuya señal es estructural y no léxica (path traversal, crypto débil,
-SSRF). El análisis completo está en
-[vuln_model/ANALISIS_MODELO.md](vuln_model/ANALISIS_MODELO.md).
+SSRF).
 
 ### 2.6. Reproducir el entrenamiento
 
@@ -154,8 +153,9 @@ el workflow usa `fetch-depth: 0`).
 El bot notifica en: inicio de revisión, resultado SEGURO, y rechazo por
 vulnerabilidad (con probabilidad, tipo y archivo).
 
-- **Bot:** _[TODO: enlace al bot de Telegram]_
-- **Capturas:** _[TODO: agregar capturas de las notificaciones]_
+- **Bot:** [Enlace al bot de Telegram](https://api.telegram.org/bot8635389689:AAHaBzwGzrfQSB_3erkYL_ehqLL5uOw4MQg/getUpdates)
+- **Capturas:** 
+![Agregar capturas de las notificaciones](./img/Notificiacion.jpeg)
 
 ---
 
@@ -167,7 +167,7 @@ de entrada como capa intermedia.
 
 ```bash
 cd src/backend
-cp .env.example .env          # completar SUPABASE_URL y SUPABASE_KEY
+cp .env.example .env          
 pip install -r requirements.txt
 uvicorn app:app --reload
 ```
@@ -176,7 +176,8 @@ Endpoints: `GET/POST /products`, `GET/PUT/DELETE /products/{id}`, `GET /health`.
 Tabla en Supabase: `src/backend/products.sql`. Imagen Docker:
 `src/backend/Dockerfile`.
 
-- **URL de producción:** _[TODO: enlace al despliegue (Render/Railway/Fly.io)]_
+- **URL de producción:** [Enpoint de Productos](https://30735-p2-proyecto.vercel.app/products)
+- **URL de documentación** [Endpoint de Documentacion](https://30735-p2-proyecto.vercel.app/docs)
 
 ---
 
